@@ -11,23 +11,24 @@ pipeline {
     }
 
     stages {
-        stage('Build') {
+        stage('Build and Push to ECR') {
             steps {
                 script {
                     // Docker 이미지를 --no-cache 옵션으로 빌드합니다.
                     def customImage = docker.build("${DOCKER_IMAGE_NAME}:${IMAGE_TAG}", "--no-cache=true -f ${DOCKERFILE_PATH} .")
 
-                    // AWS 자격 증명을 사용하여 Docker에 로그인합니다.
+                    // AWS ECR에 로그인합니다.
                     withCredentials([[
                         $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'AWS ECR', // AWS Credentials Plugin에서 설정한 credentialsId를 사용
+                        credentialsId: 'AWS_ECR_Credentials', // Jenkins에서 설정한 AWS ECR 자격 증명 ID 입력
                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                     ]]) {
                         // AWS ECR에 로그인합니다.
-                        sh "aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+                        def ecrLogin = sh(script: "aws ecr get-login-password --region ${AWS_DEFAULT_REGION}", returnStdout: true).trim()
+                        sh "docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com <<< '${ecrLogin}'"
                         
-                        // Docker 이미지를 태그합니다.
+                        // Docker 이미지를 태깅합니다.
                         sh "docker tag ${DOCKER_IMAGE_NAME}:${IMAGE_TAG} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY}:${IMAGE_TAG}"
                         
                         // Docker 이미지를 ECR에 푸시합니다.
@@ -47,5 +48,4 @@ pipeline {
         }
     }
 }
-
 ​
